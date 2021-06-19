@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useEffect, useState } from "react";
 import { setCookie, parseCookies, destroyCookie } from "nookies";
-import router from "next/router";
+import Router from "next/router";
 import { api } from "../services/apiClient";
 
 type User = {
@@ -15,7 +15,8 @@ type SingInCredentials = {
 };
 
 type AuthContextData = {
-  signIn(credentials: SingInCredentials): Promise<void>;
+  signIn: (credentials: SingInCredentials) => Promise<void>;
+  signOut: () => void;
   user: User;
   isAuthenticated: boolean;
 };
@@ -26,17 +27,34 @@ type AuthProviderProps = {
 
 export const AuthContext = createContext({} as AuthContextData);
 
+let authChannel: BroadcastChannel;
+
 export function signOut() {
   destroyCookie(undefined, "nextauth.token");
   destroyCookie(undefined, "nextauth.refreshToken");
 
-  router.push("/");
+  authChannel.postMessage("signOut");
+
+  Router.push("/");
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User>();
   // Por padrão o user é um valor falso, então se eu nego o valor falso ele fica true
   const isAuthenticated = !!user;
+
+  useEffect(() => {
+    authChannel = new BroadcastChannel("auth");
+    authChannel.onmessage = (message) => {
+      switch (message.data) {
+        case "signOut":
+          signOut();
+          break;
+        default:
+          break;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Devolve lista de cookies salvos
@@ -91,14 +109,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       api.defaults.headers["Authorization"] = ` Bearer ${token}`;
 
-      router.push("/dashboard");
+      Router.push("/dashboard");
     } catch (error) {
       console.log(error);
     }
   }
 
   return (
-    <AuthContext.Provider value={{ signIn, isAuthenticated, user }}>
+    <AuthContext.Provider value={{ signIn, signOut, isAuthenticated, user }}>
       {children}
     </AuthContext.Provider>
   );
